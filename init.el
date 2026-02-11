@@ -24,6 +24,18 @@
 (setq-default load-prefer-newer t)
 (setq-default byte-compile-warnings 'all)
 
+(eval-and-compile
+  (defconst emacs-start-time (current-time))
+
+  (defun report-time-since-load (&optional suffix)
+    (message "Loading init...done (%.3fs)%s"
+             (float-time (time-subtract (current-time) emacs-start-time))
+             suffix)))
+
+(add-hook 'after-init-hook
+          (lambda () (report-time-since-load " [after-init]"))
+          t)
+
 ;; Maximize GC threshold during startup to prevent pauses.
 ;; We reset it to a sane value via `emacs-startup-hook'.
 (setq gc-cons-threshold most-positive-fixnum)
@@ -63,6 +75,14 @@
 (setq use-package-always-defer t)
 (setq use-package-compute-statistics t)
 (setq use-package-expand-minimally t) ; errors
+
+(let ((verbose (or nil init-file-debug)))
+  (setq use-package-verbose verbose
+        use-package-expand-minimally (not verbose)
+        use-package-compute-statistics verbose
+        debug-on-error verbose
+        debug-on-message "buffer-local while locally let-bound"
+        debug-on-quit verbose))
 
 ;; Add local lisp directories
 (add-to-list 'load-path (expand-file-name "lisp" user-emacs-directory))
@@ -217,21 +237,33 @@
   :diminish whole-line-or-region-local-mode
   :config (whole-line-or-region-global-mode))
 
-;; should use smartparens instead
-(use-package electric
+(use-package hi-lock
   :ensure nil
-  :demand t
+  :bind (("M-o l" . highlight-lines-matching-regexp)
+         ("M-o r" . highlight-regexp)
+         ("M-o w" . highlight-phrase)))
+
+(use-package expand-region
   :init
-  (electric-pair-mode t)
-  (electric-indent-mode t)
-  :config
-  (setq electric-pair-preserve-balance nil)) ;; more annoying than useful
+  (global-set-key (kbd "C-=") 'er/expand-region))
+
+;; should use smartparens instead
+;; (use-package electric
+;;   :ensure nil
+;;   :demand t
+;;   :init
+;;   (electric-pair-mode t)
+;;   (electric-indent-mode t)
+;;   :config
+;;   (setq electric-pair-preserve-balance nil)) ;; more annoying than useful
 
 (use-package browse-kill-ring
   :commands browse-kill-ring)
 
 (use-package flyspell
   :ensure nil
+  :custom
+  (ispell-dictionary "en_GB")
   :hook (text-mode . flyspell-mode))
 
 (use-package flyspell-lazy
@@ -406,10 +438,10 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
     (set-face-attribute 'fixed-pitch nil :family mono-font :height size :weight 'light)
     (set-face-attribute 'variable-pitch nil :family prop-font :height size :weight 'light))
 
+  (require 'org)
   (require 'doom-themes)
   (load-theme 'doom-tokyo-night t)
   (doom-themes-org-config)
-  (require 'org)
   (doom-themes-enable-org-fontification)
   )
 
@@ -418,7 +450,8 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
 (use-package smartparens
   :demand t
   :config
-  (show-smartparens-global-mode t))
+  (show-smartparens-global-mode t)
+  (smartparens-global-mode t))
 
 (use-package pretty-symbols
   :diminish
@@ -461,6 +494,22 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :demand t
   :init
   (marginalia-mode))
+
+(use-package prescient
+  :after (vertico orderless)
+  :demand t
+  :custom
+  (prescient-persist-mode t)
+  ;;(prescient-save-file (user-data "prescient-save.el"))
+  :config
+  (add-to-list 'completion-styles 'prescient)
+  (add-to-list 'savehist-additional-variables 'prescient--history))
+
+(use-package vertico-prescient
+  :after (prescient)
+  :demand t
+  :config
+  (vertico-prescient-mode 1))
 
 (use-package consult
   :demand t
@@ -534,7 +583,12 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
          ("C-x C-d" . consult-dir)
          ("C-x C-j" . consult-dir-jump-file)))
 
-(use-package flycheck :ensure nil)
+(use-package flycheck
+  :ensure nil
+  :commands (flycheck-mode
+             flycheck-next-error
+             flycheck-previous-error)
+  )
 
 (use-package consult-flycheck
   :bind ("M-g f" . consult-flycheck))
@@ -557,24 +611,87 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
          ("M-l"      . corfu-info-location)
          ("<escape>" . corfu-quit)
          ("<return>" . corfu-insert))
+  :hook ((eshell-mode comint-mode) . (lambda () (setq-local corfu-auto nil)))
   :custom
   (corfu-auto t)
   (corfu-cycle t)
+  (corfu-separator ?\s)            ; Use space
   (corfu-quit-no-match 'separator)
   (corfu-preview-current 'insert)  ; Preview first candidate. Insert on input if only one
   (corfu-preselect-first t)        ; Preselect first company-box-candidate
   (corfu-quit-at-boundary nil)
+
+  ;; Works with `indent-for-tab-command'. Make sure tab doesn't indent when you
+  ;; want to perform completion
+  (tab-always-indent 'complete)
+  (completion-cycle-threshold nil)      ; Always show candidates in menu
+
   (corfu-preselect 'prompt)
   :init
   (global-corfu-mode)
   ;; (corfu-popupinfo-mode)
   ;; (corfu-history-mode)
   :bind (:map corfu-map
+              ("M-n"      . corfu-next)
+              ("M-p"      . corfu-previous)
+              ("<escape>" . corfu-quit)
+              ("<return>" . corfu-insert)
+              ("M-d"      . corfu-info-documentation)
+              ("M-l"      . corfu-info-location)
               ("SPC" . corfu-insert-separator)))
+
+
+(use-package corfu-popupinfo
+  :ensure nil
+  :after corfu
+  :hook (corfu-mode . corfu-popupinfo-mode)
+  :bind (:map corfu-map
+              ("M-n" . corfu-popupinfo-scroll-up)
+              ("M-p" . corfu-popupinfo-scroll-down)
+              ([remap corfu-show-documentation] . corfu-popupinfo-toggle))
+  :custom
+  (corfu-popupinfo-delay 0.5)
+  ;;(corfu-popupinfo-max-width 70)
+  ;;(corfu-popupinfo-max-height 20)
+  ;; Also here to be extra-safe that this is set when `corfu-popupinfo' is
+  ;; loaded. I do not want documentation shown in both the echo area and in
+  ;; the `corfu-popupinfo' popup.
+  (corfu-echo-documentation nil))
+
+(use-package corfu-prescient
+  :after (prescient)
+  :demand t
+  :config
+  (corfu-prescient-mode 1))
 
 (use-package cape
   :demand t
   :after (orderless corfu)
+  :hook (eshell-mode . (lambda ()
+                         (setq-local completion-at-point-functions
+                                     (cons #'pcomplete-completions-at-point
+                                           completion-at-point-functions))))
+  :hook (eglot-mode . (lambda ()
+                        (add-to-list 'completion-at-point-functions
+                                     (cape-capf-super #'eglot-completion-at-pointe-keyword))))
+  :bind (:prefix-map
+         my-cape-map
+         :prefix "C-c ."
+         ("p" . completion-at-point)
+         ("t" . complete-tag)
+         ("d" . cape-dabbrev)
+         ("h" . cape-history)
+         ("f" . cape-file)
+         ("k" . cape-keyword)
+         ("s" . cape-elisp-symbol)
+         ("a" . cape-abbrev)
+         ("l" . cape-line)
+         ("w" . cape-dict)
+         ("\\" . cape-tex)
+         ("_" . cape-tex)
+         ("^" . cape-tex)
+         ("&" . cape-sgml)
+         ("r" . cape-rfc1345))
   :init
   ;; Add `completion-at-point-functions`, used by `corfu`
   (add-hook 'completion-at-point-functions #'cape-dabbrev)
@@ -645,6 +762,9 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :hook (magit-post-refresh . diff-hl-magit-post-refresh)
   :config
   (global-diff-hl-mode t))
+
+(use-package diffview
+  :commands (diffview-current diffview-region diffview-message))
 
 (use-package magit
   :commands magit-status
@@ -742,13 +862,21 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :hook (c-mode-common . (lambda ()
                            (add-hook 'before-save-hook #'clang-format-buffer nil t))))
 
-(use-package realgud :defer t)
+(use-package realgud
+  :commands (realgud))
+
 ;; (use-package rmsbolt :defer t)
 
 (use-package x86-lookup :defer t)
 
 (setq gentoo-erlang (car (file-expand-wildcards "/usr/lib64/erlang/lib/tools-*/emacs")))
 (add-to-list 'load-path gentoo-erlang)
+
+(use-package erlang
+  :ensure nil
+  :defer t
+  :init
+  (setq erlang-root-dir "/usr/lib64/erlang"))
 
 (use-package sml-mode
   :mode "\\.sml\\'"
@@ -767,11 +895,6 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   (setq lua-default-application "luajit"))
 
 (autoload 'octave-mode "octave-mod" nil t)
-
-(use-package erlang
-  :ensure nil
-  :init
-  (setq erlang-root-dir "/usr/lib64/erlang"))
 
 ;; Rust Configuration (Google Style)
 (use-package rust-ts-mode
@@ -827,6 +950,10 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   (setq show-paren-delay 0.3)
   (show-paren-mode t))
 
+(use-package hl-line
+  :commands hl-line-mode
+  :bind ("M-o h" . hl-line-mode))
+
 ;; use M-;
 (keymap-global-set "C-x ;" #'comment-line)
 (keymap-global-set "C-x C-;" #'comment-region)
@@ -843,6 +970,14 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
          . (lambda () (add-hook 'after-save-hook #'check-parens nil t)))
   :custom
   (parens-require-spaces t))
+
+(use-package highlight-defined
+  :commands highlight-defined-mode
+  :custom
+  (highlight-defined-face-use-itself t)
+  :hook
+  ((help-mode Info-mode) . highlight-defined-mode)
+  (emacs-lisp-mode . highlight-defined-mode))
 
 (use-package elisp-def
   :diminish
@@ -1139,10 +1274,10 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   (setq sgml-xml-mode t)
   (setq sgml-transformation-function 'upcase))
 
-;; (use-package tidy
-;;   :ensure nil
-;;   :config
-;;   (setq sgml-validate-command "tidy"))
+(use-package tidy
+  :ensure nil
+  :config
+  (setq sgml-validate-command "tidy"))
 
 (use-package htmlize :defer t)
 
@@ -1151,7 +1286,9 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
 
 (use-package ox-html
   :ensure nil
-  :after ox)
+  :after ox
+  :config
+  (setq org-html-coding-system 'utf-8-unix))
 
 (use-package ox-latex
   :ensure nil
@@ -1201,6 +1338,9 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :demand t
   :after org
   :hook (org-mode . org-modern-mode))
+
+(use-package org-tidy
+  :hook (org-mode . org-tidy-mode))
 
 (use-package org-roam
   :after org
@@ -1274,10 +1414,27 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
 
 ;;; 10. AI & Tools
 
-(use-package llama :defer t)
-(use-package llama-cpp :defer t)
+(use-package llama-cpp :demand t)
 
 (use-package gptel
+  :init
+  ;; 1. Define a function to fetch the OAuth2 token dynamically
+  (defun my/get-google-oauth-token ()
+    "Get a valid OAuth2 token using the gcloud CLI."
+    (string-trim (shell-command-to-string "gcloud auth print-access-token")))
+
+  ;; 2. Configure the Gemini Backend
+  ;; We use the specialized gptel-make-gemini helper
+  (defvar gptel--gemini-backend
+    (gptel-make-gemini "Gemini"
+      :key #'my/get-google-oauth-token  ; <--- Uses the function, not a string
+      :stream t                         ; Enable streaming responses
+      :models '(;; Add the specific model names you want to use here
+                "gemini-3-pro-preview"
+                "gemini-3-flash-preview"  ; Example Preview model
+                "gemini-exp-1206")))     ; Often used for the latest experimental builds
+
+  ;; 3. Set it as the default (optional)
   :bind (("C-c RET" . gptel-send)
          ("C-c g n" . gptel)
          ("C-c g r" . gptel-rewrite)
@@ -1285,16 +1442,47 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :custom
   (gptel-default-mode 'org-mode)
   :config
-  (setq gptel-model "llama3"
-        gptel-backend (gptel-make-openai "LlamaCPP"
-                        :stream t
-                        :protocol "http"
-                        :host "localhost:8080"
-                        :models '("llama3" "mistral"))))
+  (setq gptel-model 'gemini-3-pro-preview)
+  (setq gptel-backend gptel--gemini-backend))
+;; (setq gptel-model "qwen3"
+;;       gptel-backend (gptel-make-openai "Llama.cpp"
+;;                       :stream t
+;;                       :protocol "http"
+;;                       :host "localhost:8080"
+;;                       :models '("qwen3" "deepseek" "mistral"))))
 
-(use-package gptel-context :ensure nil :after gptel)
-(use-package gptel-agent :ensure t :after gptel)
-(use-package gptel-quick :ensure nil :after gptel)
+(use-package gptel-org
+  :ensure nil
+  :after gptel
+  :config
+  (add-to-list 'gptel-org-ignore-elements 'comment-block))
+
+(use-package gptel-rewrite
+  :ensure nil
+  :after (gptel)
+  :demand t
+  :bind (("M-r" . gptel-rewrite)
+         :map gptel-mode-map
+         ("r" . gptel-rewrite)
+         :map gptel-rewrite-actions-map
+         ("<return>" . gptel--rewrite-dispatch))
+  :custom
+  (gptel-rewrite-default-action 'accept))
+
+(use-package gptel-context
+  :ensure nil
+  :after gptel
+  :bind (:map gptel-mode-map
+              ("a" . gptel-context-add)))
+
+(use-package gptel-agent :demand t :after gptel)
+
+(use-package gptel-quick
+  :ensure nil
+  :after gptel
+  :bind (:map gptel-mode-map
+              ("q" . gptel-quick)))
+
 (use-package gptel-emacs-tools :ensure nil :after gptel)
 
 (use-package copilot-chat :defer t)
@@ -1315,6 +1503,21 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :config
   (add-to-list 'copilot-indentation-alist '(org-mode 2)))
 
+(use-package macher
+  :after (gptel)
+  :config
+  (macher-install))
+
+(use-package agent-shell)
+
+(use-package ai-code
+  :bind ("C-c a" . #'ai-code-menu)
+  :config
+  ;; use codex as backend, other options are 'claude-code, 'gemini, 'github-copilot-cli, 'opencode, 'grok, 'cursor, 'kiro, 'codebuddy, 'aider, 'claude-code-ide, 'claude-code-el
+  (ai-code-set-backend 'gemini)
+  (setq ai-code-gemini-cli-program-switches '("--model" "gemini-3-pro-preview"))
+  (ai-code-prompt-filepath-completion-mode 1))
+
 ;;; Scheme
 (use-package xscheme
   :config
@@ -1324,12 +1527,27 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
 
 ;;; 11. Browsing
 
-(use-package language-detection :ensure t :defer t)
+(use-package image-file
+  :demand t
+  :hook (image-mode . image-transform-reset-to-initial)
+  :config
+  (auto-image-file-mode 1))
 
-(use-package shrface :ensure t
+(use-package language-id)
+
+(use-package language-detection)
+
+(use-package shrface
   :hook (shr-mode . shrface-mode))
 ;; (use-package shr-tag-pre-highlight :ensure t
 ;;   :hook (shr-mode . shr-tag-pre-highlight-mode))
+
+(use-package shr-tag-pre-highlight
+  :ensure t
+  :after shr
+  :config
+  (add-to-list 'shr-external-rendering-functions
+               '(pre . shr-tag-pre-highlight)))
 
 (use-package eww
   :ensure nil
@@ -1464,15 +1682,19 @@ Auto-detects CMake (C++) or Cargo (Rust) projects."
   )
 
 (use-package langtool
+  :commands (langtool-check langtool-check-buffer)
   :config
   (setq langtool-mother-tongue "en")
-  (setq langtool-default-language "en-US")
+  (setq langtool-default-language "en-GB")
   (setq langtool-java-user-arguments '("-Dfile.encoding=UTF-8"))
-  (setq langtool-java-classpath "/opt/LanguageTool/*")
-  (setq langtool-language-tool-server-jar "/opt/LanguageTool/languagetool-server.jar")
+  (setq langtool-java-classpath "/opt/LanguageTool-6.6/*")
+  (setq langtool-language-tool-jar "/opt/LanguageTool-6.6/languagetool-commandline.jar")
+  (setq langtool-language-tool-server-jar "/opt/LanguageTool-6.6/languagetool-server.jar")
   (setq langtool-server-user-arguments '("-p" "8082")))
 
-;; (use-package nxhtml :ensure nil)
+(use-package nxhtml
+  :ensure nil
+  :commands (nxhtml-mode))
 (use-package monkeytype)
 (use-package speed-type)
 
