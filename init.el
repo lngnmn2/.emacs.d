@@ -326,6 +326,12 @@
   :config
   (global-aggressive-indent-mode t))
 
+(use-package volatile-highlights
+  :demand
+  :diminish
+  :config
+  (volatile-highlights-mode t))
+
 (use-package command-log-mode
   :bind (("C-c M" . command-log-mode)
          ("C-c L" . clm/open-command-log-buffer)))
@@ -449,6 +455,7 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
 
 (use-package smartparens
   :demand t
+  :diminish
   :config
   (show-smartparens-global-mode t)
   (smartparens-global-mode t))
@@ -479,7 +486,9 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   (completion-category-overrides
    '((file (styles basic partial-completion))))
   :config
-  (add-to-list 'completion-styles 'orderless))
+  (add-to-list 'completion-styles 'orderless)
+  (setq completion-category-overrides '((file (styles orderless partial-completion)))
+        orderless-component-separator #'orderless-escapable-split-on-space))
 
 (use-package vertico
   :after orderless
@@ -584,11 +593,13 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
          ("C-x C-j" . consult-dir-jump-file)))
 
 (use-package flycheck
-  :ensure nil
   :commands (flycheck-mode
              flycheck-next-error
              flycheck-previous-error)
   )
+
+(use-package flycheck-eglot
+  :after eglot)
 
 (use-package consult-flycheck
   :bind ("M-g f" . consult-flycheck))
@@ -605,8 +616,8 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :after orderless
   :bind (("C-M-i" . completion-at-point)
          :map corfu-map
-         ("C-n"      . corfu-next)
-         ("C-p"      . corfu-previous)
+         ;;         ("C-n"      . corfu-next)
+         ;;         ("C-p"      . corfu-previous)
          ("M-d"      . corfu-info-documentation)
          ("M-l"      . corfu-info-location)
          ("<escape>" . corfu-quit)
@@ -615,9 +626,9 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :custom
   (corfu-auto t)
   (corfu-cycle t)
-  (corfu-separator ?\s)            ; Use space
   (corfu-quit-no-match 'separator)
   (corfu-preview-current 'insert)  ; Preview first candidate. Insert on input if only one
+  (corfu-preselect 'prompt)
   (corfu-preselect-first t)        ; Preselect first company-box-candidate
   (corfu-quit-at-boundary nil)
 
@@ -629,8 +640,6 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   (corfu-preselect 'prompt)
   :init
   (global-corfu-mode)
-  ;; (corfu-popupinfo-mode)
-  ;; (corfu-history-mode)
   :bind (:map corfu-map
               ("M-n"      . corfu-next)
               ("M-p"      . corfu-previous)
@@ -651,12 +660,7 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
               ([remap corfu-show-documentation] . corfu-popupinfo-toggle))
   :custom
   (corfu-popupinfo-delay 0.5)
-  ;;(corfu-popupinfo-max-width 70)
-  ;;(corfu-popupinfo-max-height 20)
-  ;; Also here to be extra-safe that this is set when `corfu-popupinfo' is
-  ;; loaded. I do not want documentation shown in both the echo area and in
-  ;; the `corfu-popupinfo' popup.
-  (corfu-echo-documentation nil))
+  (corfu-echo-documentation t))
 
 (use-package corfu-prescient
   :after (prescient)
@@ -702,6 +706,13 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   (add-hook 'completion-at-point-functions #'cape-tex) ; Math/LaTeX symbols
   )
 
+(use-package corfu-history
+  :ensure nil
+  :after savehist
+  :hook (corfu-mode . corfu-history-mode)
+  :config
+  (add-to-list 'savehist-additional-variables 'corfu-history))
+
 (use-package yasnippet
   :demand t
   :hook (prog-mode . yas-minor-mode-on)
@@ -716,6 +727,10 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
 
 (use-package consult-yasnippet
   :after (consult yasnippet))
+
+(use-package yasnippet-capf
+  :hook (yas-minor-mode . (lambda ()
+                        (add-hook 'completion-at-point-functions #'yasnippet-capf 30 t) )))
 
 ;; Company (Fallback / Legacy Support)
 (use-package company
@@ -784,7 +799,10 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
               ("M-n" . flymake-goto-next-error)
               ("M-p" . flymake-goto-prev-error)))
 
-(use-package lsp-mode :defer t)
+(use-package lsp-mode
+  :config
+   (add-to-list 'completion-category-overrides `(lsp-capf (styles ,@completion-styles)))
+  )
 
 (use-package eglot
   :ensure nil
@@ -800,6 +818,8 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
               ("C-c a" . eglot-code-actions)
               ("C-c d" . eldoc))
   :config
+  (setq-default eglot-extend-to-xref t)
+  (setq eglot-code-action-indications '(eldoc-hint mode-line))
   (setq eglot-autoshutdown t)
   ;; Add clangd to eglot
   (add-to-list 'eglot-server-programs
@@ -862,8 +882,8 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :hook (c-mode-common . (lambda ()
                            (add-hook 'before-save-hook #'clang-format-buffer nil t))))
 
-(use-package realgud
-  :commands (realgud))
+;; (use-package realgud
+;;   :commands (realgud:gdb))
 
 ;; (use-package rmsbolt :defer t)
 
@@ -882,8 +902,12 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :mode "\\.sml\\'"
   )
 
+(use-package ob-sml
+  :after org)
+
 (use-package company-mlton
   :ensure nil
+  :load-path "/usr/local/share/emacs/site-lisp"
   :after company
   :hook (sml-mode . company-mlton-init)
   :config
@@ -1047,8 +1071,11 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :config
   (setq undercover-force-coverage t))
 
+(use-package slime)
+
 ;; pollutes C-x r
 (use-package redshank
+  :after slime
   :diminish
   :commands (redshank-mode)
   ;; :hook ((lisp-mode emacs-lisp-mode) . redshank-mode)
@@ -1117,14 +1144,6 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
             (delete-region (point) (point-max))
             (call-interactively #'ielm-return))
         (call-interactively #'paredit-newline)))))
-
-(use-package eshell
-  :ensure nil
-  :hook (eshell-mode . (lambda ()
-                         (corfu-mode)
-                         (setq-local corfu-auto nil)
-                         (setq-local completion-at-point-functions
-                                     (list (cape-capf-super #'cape-file #'cape-dabbrev #'eshell-complete-parse-arguments))))))
 
 (use-package nxml-mode
   :ensure nil
@@ -1230,11 +1249,60 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
 
 ;;; 9. Org Mode & Notes
 
-(use-package org-indent
-  :ensure nil :defer t)
+(use-package djvu
+  :mode "\\.djvu\\'"
+  :magic ("%DJVU" . djvu-read-mode)
+  )
+(use-package djvu3
+  :ensure nil
+  :after djvu)
+
+(use-package pdf-tools
+  :mode "\\.pdf\\'"
+  :custom
+  (pdf-use-scalling nil))
+
+(define-minor-mode prose-mode
+  "Set up a buffer for prose editing.
+This enables or modifies a number of settings so that the
+experience of editing prose is a little more like that of a
+typical word processor."
+  :init-value nil :lighter " Prose" :keymap nil
+  (if prose-mode
+      (progn
+        (when (fboundp 'writeroom-mode)
+          (writeroom-mode 1))
+        (setq truncate-lines nil)
+        (setq word-wrap t)
+        (setq cursor-type 'bar)
+        (when (eq major-mode 'org)
+          (kill-local-variable 'buffer-face-mode-face))
+        (buffer-face-mode 1)
+        ;;(delete-selection-mode 1)
+        (setq-local blink-cursor-interval 0.6)
+        (setq-local show-trailing-whitespace nil)
+        (setq-local line-spacing 0.2)
+        (setq-local electric-pair-mode nil)
+        (ignore-errors (flyspell-mode 1))
+        (visual-line-mode 1))
+    (kill-local-variable 'truncate-lines)
+    (kill-local-variable 'word-wrap)
+    (kill-local-variable 'cursor-type)
+    (kill-local-variable 'blink-cursor-interval)
+    (kill-local-variable 'show-trailing-whitespace)
+    (kill-local-variable 'line-spacing)
+    (kill-local-variable 'electric-pair-mode)
+    (buffer-face-mode -1)
+    ;; (delete-selection-mode -1)
+    (flyspell-mode -1)
+    (visual-line-mode -1)
+    (when (fboundp 'writeroom-mode)
+      (writeroom-mode 0))))
 
 (use-package org
-  :defer t
+  :ensure nil
+  :demand t
+  :diminish
   :hook (org-mode . org-indent-mode)
   :init
   (setq org-ascii-charset 'utf-8)
@@ -1256,7 +1324,7 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
         org-startup-folded 'content)
 
   (setq org-adapt-indentation t)
-  
+
   ;; Export Backends
   (require 'ox-md)
 
@@ -1265,6 +1333,7 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
         '("latexmk -f -pdf -%latex -interaction=nonstopmode -output-directory=%o %f")))
 
 (use-package sgml-mode
+  :ensure nil
   :hook
   ((html-mode . sgml-electric-tag-pair-mode)
    (html-mode . sgml-name-8bit-mode))
@@ -1302,24 +1371,6 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :config
   ;; Set default options for pandoc export if needed
   (setq org-pandoc-options '((standalone . t))))
-
-;;; org-mode
-(use-package org
-  :defer t
-  :config
-  (setq
-   ;; Edit settings
-   org-auto-align-tags nil
-   org-tags-column 0
-   org-catch-invisible-edits 'show-and-error
-   org-special-ctrl-a/e t
-   org-insert-heading-respect-content t
-
-   ;; Org styling, hide markup etc.
-   org-hide-emphasis-markers t
-   org-pretty-entities t
-   org-agenda-tags-column 0
-   org-ellipsis "…") )
 
 (use-package org-appear
   :demand t
@@ -1434,6 +1485,32 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
                 "gemini-3-flash-preview"  ; Example Preview model
                 "gemini-exp-1206")))     ; Often used for the latest experimental builds
 
+  ;; --- 1. Define the Local Llama Backend ---
+  (defvar gptel--llama-backend
+    (gptel-make-openai "Local Llama"   ; The name that appears in the menu
+      :host "localhost:8080"           ; Default llama.cpp server port
+      :protocol "http"
+      :stream t                        ; Enable streaming
+      :key nil                         ; No API key needed for local
+      :models '("qwen3"  ; The model name (server often ignores this, but gptel needs one)
+                "deepseek"
+                "mistral")))
+
+  ;; --- 2. Custom Switching Command ---
+  (defun my/gptel-switch-backend ()
+    "Quickly switch between Gemini and Local Llama backends."
+    (interactive)
+    (let* ((backends `(("Gemini (Cloud)" . ,gptel--gemini-backend)
+                       ("Llama (Local)"  . ,gptel--llama-backend)))
+           (choice (completing-read "Select AI Backend: " (mapcar #'car backends)))
+           (selected-backend (alist-get choice backends nil nil #'string=)))
+      
+      (setq gptel-backend selected-backend)
+      (message "Switched gptel backend to: %s" choice)))
+
+  ;; --- 3. Keybinding ---
+  ;; Bind this to a key for fast access, e.g., C-c s
+  (global-set-key (kbd "C-c g s") 'my/gptel-switch-backend)
   ;; 3. Set it as the default (optional)
   :bind (("C-c RET" . gptel-send)
          ("C-c g n" . gptel)
@@ -1442,14 +1519,8 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :custom
   (gptel-default-mode 'org-mode)
   :config
-  (setq gptel-model 'gemini-3-pro-preview)
-  (setq gptel-backend gptel--gemini-backend))
-;; (setq gptel-model "qwen3"
-;;       gptel-backend (gptel-make-openai "Llama.cpp"
-;;                       :stream t
-;;                       :protocol "http"
-;;                       :host "localhost:8080"
-;;                       :models '("qwen3" "deepseek" "mistral"))))
+  (setq gptel-backend gptel--gemini-backend)
+  (setq gptel-model 'gemini-3-pro-preview))
 
 (use-package gptel-org
   :ensure nil
@@ -1462,8 +1533,6 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :after (gptel)
   :demand t
   :bind (("M-r" . gptel-rewrite)
-         :map gptel-mode-map
-         ("r" . gptel-rewrite)
          :map gptel-rewrite-actions-map
          ("<return>" . gptel--rewrite-dispatch))
   :custom
@@ -1473,7 +1542,7 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :ensure nil
   :after gptel
   :bind (:map gptel-mode-map
-              ("a" . gptel-context-add)))
+              ("M-a" . gptel-context-add)))
 
 (use-package gptel-agent :demand t :after gptel)
 
@@ -1481,7 +1550,7 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :ensure nil
   :after gptel
   :bind (:map gptel-mode-map
-              ("q" . gptel-quick)))
+              ("M-q" . gptel-quick)))
 
 (use-package gptel-emacs-tools :ensure nil :after gptel)
 
@@ -1539,15 +1608,29 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
 
 (use-package shrface
   :hook (shr-mode . shrface-mode))
-;; (use-package shr-tag-pre-highlight :ensure t
-;;   :hook (shr-mode . shr-tag-pre-highlight-mode))
 
 (use-package shr-tag-pre-highlight
   :ensure t
   :after shr
+  :hook (shr-mode . shr-tag-pre-highlight-mode)
   :config
   (add-to-list 'shr-external-rendering-functions
-               '(pre . shr-tag-pre-highlight)))
+               '(pre . #''shr-tag-pre-highlight)))
+
+(use-package nov
+  :after shr
+  :mode ("\\.epub\\'" . nov-mode)
+  :commands (nov-mode nov-open-directory nov-mode-menu)
+  :custom
+  (nov-variable-pitch t)
+  :hook (nov-mode . (lambda ()
+                      (visual-line-mode t)
+                      (visual-fill-column-mode t)
+                      (mixed-pitch-mode t)
+                      (variable-pitch-mode t)
+                      (focus-read-only-mode t)
+                      (hide-mode-line-mode t)))
+  )
 
 (use-package eww
   :ensure nil
@@ -1563,23 +1646,23 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :config
   (add-hook 'eww-mode-hook #'mixed-pitch-mode))
 
-(with-eval-after-load 'org-mode
+(with-eval-after-load 'org
   (setq org-ascii-charset 'utf-8)
   (setq org-export-coding-system 'utf-8)
   (setq org-html-coding-system 'utf-8)
 
-  (setq inferior-python-program "python3.13")
-  (setq python-interpreter "python3.13")
-  (setq python-shell-interpreter "python3.13")
+  (setq python-interpreter "python3")
+  (setq python-shell-interpreter "python3")
 
   (org-babel-do-load-languages
    'org-babel-load-languages
    '((emacs-lisp . t)
-     (elisp . t)
+     (latex . t)
      (python . t)
-     (ipython . t)
-     (bash . t)
-     (sh . t)
+     (shell . t)
+     (sml . t)
+     (ocaml . nil)
+     (octave . t)
      (rust . t)))
   
   (cl-defmacro lsp-org-babel-enable (lang)
@@ -1692,11 +1775,208 @@ Auto-detects CMake (C++) or Cargo (Rust) projects."
   (setq langtool-language-tool-server-jar "/opt/LanguageTool-6.6/languagetool-server.jar")
   (setq langtool-server-user-arguments '("-p" "8082")))
 
-(use-package nxhtml
+(use-package eshell
   :ensure nil
-  :commands (nxhtml-mode))
+  :after (corfu cape)
+
+  ;; :hook (eshell-mode . (lambda ()
+  ;;                        (corfu-mode)
+  ;;                        (setq-local corfu-auto nil)
+  ;;                        (setq-local completion-at-point-functions
+  ;;                                    (list (cape-capf-super #'cape-file #'cape-dabbrev #'eshell-complete-parse-arguments)))))
+  ;; :hook (eshell-pre-command . #'buffer-disable-undo)
+  ;; :hook (eshell-post-command . (lambda ()
+  ;;                                (buffer-enable-undo (current-buffer))
+  ;;                                (setq buffer-undo-list nil)))
+  ;; :hook (eshell-pre-command . (lambda ()
+  ;;                               (when (and eshell-last-input-start
+  ;;                                          eshell-last-input-end)
+  ;;                                 (add-text-properties eshell-last-input-start
+  ;;                                                      (1- eshell-last-input-end)
+  ;;                                                      '(read-only t)))))
+  ;; :hook (eshell-post-command . (lambda ()
+  ;;                                (when (and eshell-last-input-end
+  ;;                                           eshell-last-output-start)
+  ;;                                  (add-text-properties eshell-last-input-end
+  ;;                                                       eshell-last-output-start
+  ;;                                                       '(read-only t)))))
+  ;; Enable autopairing in eshell
+  :hook (eshell-mode . (lambda ()
+                         (electric-pair-local-mode t)
+                         (hide-mode-line-mode t)))
+  :config
+  (setq
+   ;; eshell-banner-message
+   ;; '(format "%s %s\n"
+   ;;          (propertize (format " %s " (string-trim (buffer-name)))
+   ;;                      'face 'mode-line-highlight)
+   ;;          (propertize (current-time-string)
+   ;;                      'face 'font-lock-keyword-face))
+   eshell-scroll-to-bottom-on-input 'all
+   eshell-scroll-to-bottom-on-output 'all
+   eshell-kill-processes-on-exit t
+   eshell-hist-ignoredups t
+   ;; eshell-input-filter-initial-space t
+   ;; em-prompt
+   eshell-prompt-regexp "^[^#$\n]* [#$λ] "
+   ;; em-glob
+   eshell-glob-case-insensitive t
+   eshell-error-if-no-glob t)
+  )
+
+;; (use-package eshell-up :ensure nil
+;;   :after eshell)
+;; (use-package eshell-z :ensure nil
+;;   :after eshell)
+;; (use-package shrink-path)
+;; (use-package esh-help :ensure nil
+;;   :after eshell)
+
+;; (use-package eshell-did-you-mean
+;;   :after esh-mode ; Specifically esh-mode, not eshell
+;;   :config (eshell-did-you-mean-setup))
+
+;; (use-package eshell-syntax-highlighting
+;;   :hook (eshell-mode . eshell-syntax-highlighting-mode))
+
+;; (use-package bash-completion)
+;; (use-package fish-completion)
+
+(use-package vterm
+  :commands (vterm vterm-mode)
+  :hook (vterm-mode . hide-mode-line-mode) ; modeline serves no purpose in vterm
+  :config
+  (setq vterm-max-scrollback 5000))
+
+;; (use-package nxhtml
+;;   :ensure nil
+;;   :commands (nxhtml-mode)
+;;   :init
+;;   (load "nxhtml/autostart.el"))
+
 (use-package monkeytype)
 (use-package speed-type)
+
+(use-package smtpmail :demand t)
+
+(require 'smtpmail)
+
+(with-eval-after-load 'smtpmail
+  (setq smtpmail-auth-supported '(xoauth2)  ; Force XOAUTH2
+        smtpmail-debug-info t              ; Useful for initial setup
+        smtpmail-debug-verb t))
+
+(use-package notmuch
+  :ensure nil
+  :load-path "/usr/share/emacs/site-lisp"
+  :commands (notmuch))
+  :after smtpmail
+
+(use-package mu4e
+  :ensure nil
+  :load-path "/usr/local/share/emacs/site-lisp"
+  :after smtpmail
+  :commands (mu4e)
+  :config
+  ;; set mail user agent
+  (setq mail-user-agent 'mu4e-user-agent
+        message-mail-user-agent 'mu4e-user-agent)
+  (setq         ;; configuration for sending mail
+   message-send-mail-function #'smtpmail-send-it
+   smtpmail-stream-type 'starttls
+   ))
+
+(use-package org-msg
+  :defer t
+  :init
+  :hook (mu4e . (progn require 'org-msg))
+  :config
+  (setq org-msg-options "html-postamble:nil H:5 num:nil ^:{} toc:nil author:nil email:nil tex:dvipng"
+        org-msg-startup "hidestars indent inlineimages"
+        org-msg-greeting-name-limit 3
+        org-msg-default-alternatives '((new . (utf-8 html))
+                                       (reply-to-text . (utf-8))
+                                       (reply-to-html . (utf-8 html)))
+        org-msg-convert-citation t
+        ))
+
+;; Define a function to fetch the token from gcloud
+(defun my-fetch-gcloud-token ()
+  "Fetch a fresh OAuth2 access token using gcloud CLI."
+  (string-trim (shell-command-to-string "gcloud auth print-access-token")))
+
+;; We need to override the XOAUTH2 method in smtpmail to use our token
+;; rather than looking for a hardcoded password in auth-sources.
+(cl-defmethod smtpmail-try-auth-method
+  (process (mech (eql xoauth2)) user password)
+  (let ((token (my-fetch-gcloud-token)))
+    (smtpmail-command-or-throw
+     process
+     (format "AUTH XOAUTH2 %s"
+             (base64-encode-string
+              (format "user=%s\1auth=Bearer %s\1\1" user token) t))
+     235)))
+
+(setq message-send-mail-function 'smtpmail-send-it
+      smtpmail-stream-type 'starttls
+      smtpmail-default-smtp-server "smtp.gmail.com"
+      smtpmail-smtp-server "smtp.gmail.com"
+      smtpmail-smtp-service 587
+      ;; Force smtpmail to use XOAUTH2 mechanism
+      smtpmail-auth-credentials nil ;; specific to older versions, safe to nil
+      smtpmail-servers-requiring-authorization ".*"
+      smtpmail-stream-type 'starttls)
+
+;; explicitly whack the other methodsa
+(setq smtpmail-auth-supported '(xoauth2))
+
+(defun my/gmail-check-connection ()
+  "Verify Gmail API connectivity using gcloud OAuth2 token."
+  (interactive)
+  (let* ((token (string-trim (shell-command-to-string "gcloud auth print-access-token")))
+         (url "https://gmail.googleapis.com/gmail/v1/users/me/profile")
+         (url-request-extra-headers `(("Authorization" . ,(concat "Bearer " token))))
+         (url-request-method "GET"))
+    (url-retrieve url
+                  (lambda (status)
+                    (if (plist-get status :error)
+                        (message "Gmail Connection: FAILED. Check gcloud login.")
+                      (goto-char (point-min))
+                      (re-search-forward "{")
+                      (message "Gmail Connection: SUCCESS! Your token is valid.")
+                      ;; Optional: Show the JSON response in a buffer
+                      ;; (display-buffer (current-buffer))
+                      )))))
+
+(defun my/gcloud-auth-login()
+  (interactive)
+  (eshell-command "gcloud auth application-default login" t))
+
+(defun my/gcloud-auth-login1()
+  (let* ((output (eshell-command-result "gcloud auth application-default login"))
+         (stdout (split-string output "\n")))
+    (message stdout)))
+
+(defun my/gmail-check-connection1 ()
+  "Verify Gmail API connectivity and log the results."
+  (interactive)
+  (let ((token (string-trim (shell-command-to-string "gcloud auth print-access-token"))))
+    (if (or (string-empty-p token) (string-match-p "ERROR" token))
+        (error "Gcloud failed to provide a token. Run 'gcloud auth application-default login' in terminal.")
+      (let* ((url "https://gmail.googleapis.com/gmail/v1/users/me/profile")
+             (url-request-extra-headers `(("Authorization" . ,(concat "Bearer " token))))
+             (url-request-method "GET"))
+        (message "Testing Gmail connection with token: %s..." (substring token 0 10))
+        (url-retrieve url
+                      (lambda (status)
+                        (cond
+                         ((plist-get status :error)
+                          (message "Gmail Connection: FAILED. Error: %S" (plist-get status :error)))
+                         (t
+                          (goto-char (point-min))
+                          (if (re-search-forward "emailAddress" nil t)
+                              (message "Gmail Connection: SUCCESS! Emacs can see your inbox.")
+                            (message "Gmail Connection: PARTIAL SUCCESS. Received response, but no email found."))))))))))
 
 (provide 'init)
 ;;; init.el ends here
