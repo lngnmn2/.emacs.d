@@ -616,21 +616,22 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   :after orderless
   :bind (("C-M-i" . completion-at-point)
          :map corfu-map
-         ;;         ("C-n"      . corfu-next)
-         ;;         ("C-p"      . corfu-previous)
+         ("M-n"      . corfu-next)
+         ("M-p"      . corfu-previous)
          ("M-d"      . corfu-info-documentation)
          ("M-l"      . corfu-info-location)
          ("<escape>" . corfu-quit)
-         ("<return>" . corfu-insert))
+         ("<return>" . corfu-insert)
+         ("SPC" . corfu-insert-separator))
   :hook ((eshell-mode comint-mode) . (lambda () (setq-local corfu-auto nil)))
   :custom
   (corfu-auto t)
-  (corfu-cycle t)
+  (corfu-cycle nil) ; This fuck ups C-n, C-p
+  (corfu-quit-at-boundary 'separator)
   (corfu-quit-no-match 'separator)
   (corfu-preview-current 'insert)  ; Preview first candidate. Insert on input if only one
   (corfu-preselect 'prompt)
   (corfu-preselect-first t)        ; Preselect first company-box-candidate
-  (corfu-quit-at-boundary nil)
 
   ;; Works with `indent-for-tab-command'. Make sure tab doesn't indent when you
   ;; want to perform completion
@@ -639,16 +640,7 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
 
   (corfu-preselect 'prompt)
   :init
-  (global-corfu-mode)
-  :bind (:map corfu-map
-              ("M-n"      . corfu-next)
-              ("M-p"      . corfu-previous)
-              ("<escape>" . corfu-quit)
-              ("<return>" . corfu-insert)
-              ("M-d"      . corfu-info-documentation)
-              ("M-l"      . corfu-info-location)
-              ("SPC" . corfu-insert-separator)))
-
+  (global-corfu-mode))
 
 (use-package corfu-popupinfo
   :ensure nil
@@ -1857,20 +1849,19 @@ Auto-detects CMake (C++) or Cargo (Rust) projects."
 (use-package monkeytype)
 (use-package speed-type)
 
-(use-package smtpmail :demand t)
-
-(require 'smtpmail)
-
-(with-eval-after-load 'smtpmail
+(use-package smtpmail
+  :ensure nil
+  :demand t
+  :config
   (setq smtpmail-auth-supported '(xoauth2)  ; Force XOAUTH2
         smtpmail-debug-info t              ; Useful for initial setup
         smtpmail-debug-verb t))
 
 (use-package notmuch
   :ensure nil
-  :load-path "/usr/share/emacs/site-lisp"
-  :commands (notmuch))
+  :load-path "/usr/share/emacs/site-lisp/notmuch"
   :after smtpmail
+  :commands (notmuch))
 
 (use-package mu4e
   :ensure nil
@@ -1888,7 +1879,6 @@ Auto-detects CMake (C++) or Cargo (Rust) projects."
 
 (use-package org-msg
   :defer t
-  :init
   :hook (mu4e . (progn require 'org-msg))
   :config
   (setq org-msg-options "html-postamble:nil H:5 num:nil ^:{} toc:nil author:nil email:nil tex:dvipng"
@@ -1977,6 +1967,12 @@ Auto-detects CMake (C++) or Cargo (Rust) projects."
                           (if (re-search-forward "emailAddress" nil t)
                               (message "Gmail Connection: SUCCESS! Emacs can see your inbox.")
                             (message "Gmail Connection: PARTIAL SUCCESS. Received response, but no email found."))))))))))
+
+(use-package emms)
+
+(use-package mingus)
+
+(use-package mpdel)
 
 (provide 'init)
 ;;; init.el ends here
