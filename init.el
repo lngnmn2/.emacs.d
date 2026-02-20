@@ -36,6 +36,8 @@
           (lambda () (report-time-since-load " [after-init]"))
           t)
 
+;; (global-set-key "C-x C-c C-c" #'save-buffers-kill-emacs)
+
 ;; Maximize GC threshold during startup to prevent pauses.
 ;; We reset it to a sane value via `emacs-startup-hook'.
 (setq gc-cons-threshold most-positive-fixnum)
@@ -61,7 +63,18 @@
 ;;; 2. Package Management
 
 (require 'package)
-(add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
+
+(setq package-archives
+      '(("gnu-elpa" . "https://elpa.gnu.org/packages/")
+        ("gnu-elpa-devel" . "https://elpa.gnu.org/devel/")
+        ("nongnu" . "https://elpa.nongnu.org/nongnu/")
+        ("melpa" . "https://melpa.org/packages/")))
+
+(setq package-archive-priorities
+      '(("gnu-elpa" . 3)
+        ("melpa" . 2)
+        ("nongnu" . 1)))
+
 (package-initialize)
 
 ;; Define and load custom file early to keep init.el clean
@@ -628,7 +641,8 @@ Also immediately enables `mixed-pitch-modes' if currently in one of the modes."
   (corfu-auto t)
   (corfu-cycle nil) ; This fuck ups C-n, C-p
   (corfu-quit-at-boundary 'separator)
-  (corfu-quit-no-match 'separator)
+  ;; (corfu-quit-no-match 'separator)
+  (corfu-quit-no-match t)
   (corfu-preview-current 'insert)  ; Preview first candidate. Insert on input if only one
   (corfu-preselect 'prompt)
   (corfu-preselect-first t)        ; Preselect first company-box-candidate
@@ -1356,6 +1370,7 @@ typical word processor."
   :after ox)
 
 (use-package ox-hugo
+  :demand t
   :after ox)
 
 (use-package ox-pandoc
@@ -1968,7 +1983,19 @@ Auto-detects CMake (C++) or Cargo (Rust) projects."
                               (message "Gmail Connection: SUCCESS! Emacs can see your inbox.")
                             (message "Gmail Connection: PARTIAL SUCCESS. Received response, but no email found."))))))))))
 
-(use-package emms)
+(use-package emms
+  :ensure t
+  :config
+  (require 'emms-setup)
+  (emms-all) ; Load all default features
+  (setq emms-source-file-default-directory "~/Music/")
+  (setq emms-player-list '(emms-player-mpv))
+  (add-to-list 'emms-player-list 'emms-player-mpd t)
+  (setq 
+   emms-player-mpd-server-name "localhost"
+   emms-player-mpd-server-port "6600"
+   emms-player-mpd-music-directory "~/Music")
+  (add-to-list 'emms-info-functions 'emms-info-mpd))
 
 (use-package mingus)
 
